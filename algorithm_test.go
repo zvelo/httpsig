@@ -47,18 +47,10 @@ func testKeyGetter() KeyGetter {
 	})
 }
 
-func validateSignatureHandler(t *testing.T) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := SignatureHeader.Verify(testKeyGetter(), r); err != nil {
-			t.Error(err)
-		}
-	})
-}
-
 func TestSign(t *testing.T) {
 	t.Parallel()
 
-	ts := httptest.NewServer(validateSignatureHandler(t))
+	ts := httptest.NewServer(Middleware(SignatureHeader, testKeyGetter(), nil))
 
 	for _, s := range []struct {
 		algo  Algorithm
