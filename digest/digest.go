@@ -125,19 +125,17 @@ func (e hexCodec) DecodedLen(n int) int {
 
 var hexEncoding codec = hexCodec{}
 
-func (a Algorithm) codec() codec {
+func (a Algorithm) codec() (codec, error) {
 	switch a {
-	case ADLER32:
-		return hexEncoding
-	case CRC32c:
-		return hexEncoding
+	case ADLER32, CRC32c:
+		return hexEncoding, nil
 	case MD5, SHA, SHA256, SHA512:
-		return base64.RawURLEncoding
+		return base64.RawURLEncoding, nil
 	case UNIXsum, UNIXcksum:
 		// unsupported
 	}
 
-	return nil
+	return nil, errors.Errorf("%s is unsupported", a)
 }
 
 // Hash returns a hash for the body of the request
@@ -212,7 +210,12 @@ func (a Algorithm) SetHeader(req *http.Request) error {
 		return nil
 	}
 
-	if enc := a.codec(); enc != nil {
+	enc, err := a.codec()
+	if err != nil {
+		return err
+	}
+
+	if enc != nil {
 		buf := make([]byte, enc.EncodedLen(len(hash)))
 		enc.Encode(buf, hash)
 		hash = buf
@@ -237,12 +240,18 @@ func ParseHeader(req *http.Request) (Algorithm, []byte, error) {
 
 	algo := ParseAlgorithm(name)
 
-	var buf []byte
-	if dec := algo.codec(); dec != nil {
-		buf = make([]byte, dec.DecodedLen(len(value)))
-		if _, err := dec.Decode(buf, value); err != nil {
-			return Unknown, nil, err
-		}
+	dec, err := algo.codec()
+	if err != nil {
+		return Unknown, nil, err
+	}
+
+	if dec == nil {
+		return algo, value, nil
+	}
+
+	buf := make([]byte, dec.DecodedLen(len(value)))
+	if _, err = dec.Decode(buf, value); err != nil {
+		return Unknown, nil, err
 	}
 
 	return algo, buf, nil

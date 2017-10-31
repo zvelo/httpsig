@@ -43,7 +43,11 @@ func TestDigest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			enc := s.algo.codec()
+			enc, err := s.algo.codec()
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			buf := make([]byte, enc.EncodedLen(len(hash)))
 			enc.Encode(buf, hash)
 

@@ -224,6 +224,13 @@ func setRequiredHeaders(req *http.Request, digestAlgo digest.Algorithm) error {
 		req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
 	}
 
+	// don't clobber an existing Digest header, but return an error if it is
+	// invalid
+	if val := req.Header.Get(digest.Header); val != "" {
+		return digest.VerifyHeader(req)
+	}
+
+	// there was no Digest header, so let's set one
 	return digestAlgo.SetHeader(req)
 }
 
