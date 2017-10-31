@@ -23,12 +23,14 @@ type transport struct {
 	algo       Algorithm
 	digestAlgo digest.Algorithm
 	headerType HeaderType
+	tracer     func() opentracing.Tracer
 }
 
 func defaultTransport() *transport {
 	return &transport{
 		digestAlgo: DefaultDigestAlgo,
 		headerType: DefaultHeaderType,
+		tracer:     opentracing.GlobalTracer,
 	}
 }
 
@@ -55,21 +57,34 @@ func WithDigestAlgorithm(val digest.Algorithm) TransportOption {
 	}
 }
 
-func cloneRequest(r *http.Request) *http.Request {
-	// shallow copy of the struct
-	r2 := *r
-	// deep copy of the Header
-	r2.Header = make(http.Header, len(r.Header))
-	for k, s := range r.Header {
-		r2.Header[k] = append([]string(nil), s...)
+// WithTracer sets the tracer to be used by the Transport
+func WithTracer(tracer opentracing.Tracer) TransportOption {
+	if tracer == nil {
+		tracer = opentracing.GlobalTracer()
 	}
-	return &r2
+
+	return func(t *transport) {
+		t.tracer = func() opentracing.Tracer {
+			return tracer
+		}
+	}
+}
+
+func (t transport) startSpan(req *http.Request, operationName string, opts ...opentracing.StartSpanOption) (opentracing.Span, *http.Request) {
+	var span opentracing.Span
+	if parentSpan := opentracing.SpanFromContext(req.Context()); parentSpan != nil {
+		opts = append(opts, opentracing.ChildOf(parentSpan.Context()))
+		span = t.tracer().StartSpan(operationName, opts...)
+	} else {
+		span = t.tracer().StartSpan(operationName, opts...)
+	}
+
+	return span, req.WithContext(opentracing.ContextWithSpan(req.Context(), span))
 }
 
 func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req = cloneRequest(req) // per RoundTripper contract
-
-	span, _ := opentracing.StartSpanFromContext(req.Context(), strings.ToUpper(req.URL.Scheme)+" "+req.Method)
+	// startSpan clones req per RoundTripper contract
+	span, req := t.startSpan(req, strings.ToUpper(req.URL.Scheme)+" "+req.Method)
 	defer span.Finish()
 
 	ext.SpanKindRPCClient.Set(span)
