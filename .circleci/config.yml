@@ -2,8 +2,6 @@ version: 2
 
 jobs:
   build:
-    working_directory: /go/src/zvelo.io/httpsig
-
     docker:
       - image: circleci/golang:latest
 
@@ -17,11 +15,8 @@ jobs:
       - run:
           name: Install Test Dependencies
           command: |
-            go get -v github.com/golang/dep/cmd/dep
             go get -v github.com/jstemmer/go-junit-report
-            go get -v github.com/go-playground/overalls
             go get -v github.com/mattn/goveralls
-            dep ensure
       - run:
           name: Run unit tests
           command: |
@@ -31,7 +26,7 @@ jobs:
       - run:
           name: Calculate unit test coverage
           command: |
-            overalls -project ${PROJECT}
+            go test -v -cover -race -coverprofile=coverage.out ./...
             goveralls -v -coverprofile=overalls.coverprofile -service circle-ci -repotoken ${COVERALLS_REPO_TOKEN} || true
       - store_artifacts:
           path: /tmp/test-results
